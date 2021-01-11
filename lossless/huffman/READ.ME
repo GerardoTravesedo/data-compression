@@ -4,6 +4,22 @@
     * Reduction: 45%
 
 - Large corpus: World 192
-    * Input size: 2473400 (2.4 MB)
-    * Output size: 1504375 (1.5 MB)
-    * Reduction = 40%
+    * Input size: 2408281 (2.408 MB)
+    * Using regular Huffman:
+        + Output size: 1504375 (1.5 MB)
+        + Reduction = 38%
+    * Using extended Huffman with 2 characters per input symbol:
+        + 1329218 (1.329 MB)
+        + Reduction = 45%
+    * Using extended Huffman with 3 characters per input symbol:
+        + 1292636 (1.329 MB)
+        + Reduction = 47%
+
+- Issues with Huffman codes:
+    * We have to read the whole file twice. One time to build the Huffman encoding map and another one to compress the file
+    * Inapplicable to streaming string (use adaptive Huffman codes instead)
+
+
+- TODO:
+    * Add more comments in general but specifically to grouping reader
+    * Make it faster?
