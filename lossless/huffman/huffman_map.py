@@ -10,7 +10,7 @@ def build_huffman_map(symbol_occurrences):
     It assigns a prefix-free code to each symbol, meaning that it requires that there is no whole code word that
     is a prefix of any other code word. To build this tree:
 
-    - Create a leaf node for each symbol and add it to the priority queue.
+    - Create a leaf node for each symbol with weight = probability of symbol and add it to the priority queue.
     - While there is more than one node in the queue:
         * Remove the two nodes of highest priority (lowest probability) from the queue
         * Create a new internal node with these two nodes as children and with probability equal to the sum of the two nodes' probabilities.

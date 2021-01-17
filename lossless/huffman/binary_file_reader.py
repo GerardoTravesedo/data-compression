@@ -4,8 +4,8 @@ from bitarray import bitarray
 class BinaryFileReader:
     """
     This class helps us read a file bit by bit. It internally uses a bitarray to buffer bits from the file. It first
-    fills the buffer with 8 bits and return bits from that buffer. It won't fill the buffer up again until it is
-    completely consumed.
+    fills the buffer with 8 bits and return bits from that buffer. It won't fill the buffer up again with more data
+    from the file until it is completely consumed.
 
     The max number of bits stored in the buffer at any given point is 8.
     """
@@ -25,7 +25,7 @@ class BinaryFileReader:
         the returned bitarray will be emtpy.
 
         :param number: The number of bits to read from the file
-        :return: Bitarray containing the required bits from the file
+        :return: bitarray containing the required bits from the file
         """
         bits = bitarray()
 

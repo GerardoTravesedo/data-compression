@@ -1,4 +1,12 @@
 class GroupingFileReader:
+    """
+    This class represents an iterator that allows us to group characters in a file into groups of configurable size.
+    This can be used, for example, to implement blocking in Huffman codes.
+
+    It works by wrapping an iterator for the input file. Every time next is called, it internally calls next on the
+    input file iterator and returns the result as a list of groups of group_size. Rather than returning "Hello World!",
+    it returns [[He], [ll], [o ], [Wo], [rl], [d!]] when group_size = 2.
+    """
 
     def __init__(self, file_handler, group_size):
         self._remaining_string = None

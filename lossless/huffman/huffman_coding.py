@@ -8,14 +8,17 @@ from lossless.huffman.huffman_map import build_huffman_map
 from lossless.huffman.grouping_file_reader import GroupingFileReader
 
 
-def encode(file_path, output_path, block_size, bytes_utf8_block):
+def encode(file_path, output_path, block_size, bits_utf8_block):
     """
     Uses Huffman codes to encode an input file. It finds the Huffman codes based on the content of the file and stores
-    them in the encoded file itself.
+    them at the beginning of the encoded file itself.
 
-    The encoded file is created in the same folder where the input file is located. The extension of the file is .huff
+    The encoded file is created in output_path. The extension of the file is .huff
 
     @:param file_path: path to the input file to encode
+    @:param output_path: path where to put the encoded file with extension .huff
+    @:param block_size: number of consecutive symbols to encode together
+    @:param bits_utf8_block: number of bits needed to represent each UTF-8 block
     """
     output_path = paths.get_compressed_output_path(file_path, output_path)
 
@@ -32,7 +35,7 @@ def encode(file_path, output_path, block_size, bytes_utf8_block):
             encoded_input.encode(encoding_map, groups)
 
     # Huffman map is added at the beginning of the encoded file to be able to decode it later
-    encoded_content = _encode_huffman_map(encoding_map, bytes_utf8_block)
+    encoded_content = _encode_huffman_map(encoding_map, bits_utf8_block)
     # Adding the encoded input file
     encoded_content.extend(encoded_input)
     # Adding end-of-file
@@ -42,15 +45,15 @@ def encode(file_path, output_path, block_size, bytes_utf8_block):
         encoded_content.tofile(outputf)
 
 
-def decode(input_path, output_path, bytes_utf8_block):
+def decode(input_path, output_path, bits_utf8_block):
     """
     Decodes a file with extension .huff using the Huffman codes that can be found at the beginning of the
     encoded file itself.
 
     The content of a encoded file follows this structure:
         - For each Huffman map entry:
-            * 2 bits representing the number of bytes of the symbol in UTF-8
-            * The symbol in UTF-8 (from 1 to 4 bytes)
+            * bits_utf8_block bits representing the number of bytes of the symbol (or block of symbols) in UTF-8
+            * The symbol (or block) in UTF-8 (from 1 to 4 bytes each)
             * 5 bits representing the number of bytes for the Huffman code associated with the symbol
             * The Huffman code for the symbol
         - SEPARATOR 3 (u"\u001D") to separate map and encoded input file
@@ -58,6 +61,8 @@ def decode(input_path, output_path, bytes_utf8_block):
         - SEPARATOR 4 (u"\u001C") to indicate end-of-file
 
     @:param file_path: path to the input file to encode
+    @:param output_path: path where to put the encoded file with extension .huff
+    @:param bits_utf8_block: number of bits needed to represent each UTF-8 block
     """
     output_path = paths.get_decompressed_output_path(input_path, output_path)
 
@@ -69,7 +74,7 @@ def decode(input_path, output_path, bytes_utf8_block):
 
         # Keep decoding every Huffman map entry until all entries are covered
         while not is_map_decoding_done:
-            is_map_decoding_done = _decode_huffman_map_entry(decoding_map, reader, bytes_utf8_block)
+            is_map_decoding_done = _decode_huffman_map_entry(decoding_map, reader, bits_utf8_block)
 
         all_encodings = decoding_map.keys()
 
@@ -92,8 +97,8 @@ def decode(input_path, output_path, bytes_utf8_block):
 
 
 # Returns true if we it is done reading the encoding map. This happens when the entry read is unicode SEPARATOR 3
-def _decode_huffman_map_entry(decoding_map, reader, bytes_utf8_block):
-    utf8_symbol_number_bytes = int(reader.read_bits(bytes_utf8_block).to01(), 2)
+def _decode_huffman_map_entry(decoding_map, reader, bits_utf8_block):
+    utf8_symbol_number_bytes = int(reader.read_bits(bits_utf8_block).to01(), 2)
 
     # Reading necessary bytes to decode UTF-8 symbol
     utf8_symbol_binary = reader.read_bits(utf8_symbol_number_bytes * 8)
@@ -118,15 +123,15 @@ def _decode_huffman_map_entry(decoding_map, reader, bytes_utf8_block):
     return False
 
 
-def _encode_huffman_map(encoding_map, bytes_utf8_block):
+def _encode_huffman_map(encoding_map, bits_utf8_block):
     encoded_map = bitarray()
 
     for (symbol, code) in encoding_map.items():
-        encoded_map.extend(_encode_huffman_map_entry(symbol, code, bytes_utf8_block))
+        encoded_map.extend(_encode_huffman_map_entry(symbol, code, bits_utf8_block))
 
     # Adding unicode separator 3 at the end to indicate we are done with the map encoding
     # The separator is represented with 1 byte in UTF-8, so we use a 1 in binary to indicate the size
-    encoded_map.extend("0" * (bytes_per_utf8_block - 1) + "1")
+    encoded_map.extend("0" * (bits_utf8_block - 1) + "1")
     encoded_map.frombytes(bytes(u"\u001D", 'utf-8'))
 
     print("Encoded map length: {}".format(len(encoded_map)))
@@ -154,7 +159,6 @@ def _encode_huffman_map_entry(symbol, code, bytes_utf8_block):
 
 
 def _get_symbol_occurrences(file_path, block_size):
-    total_occurrences = 0
     symbol_occurrences = {}
 
     with open(file_path, 'r') as f:
@@ -162,8 +166,6 @@ def _get_symbol_occurrences(file_path, block_size):
 
         for groups in grouping_reader:
             for symbol in groups:
-                total_occurrences += 1
-
                 symbol_occurrences[symbol] = \
                     symbol_occurrences[symbol] + 1 if symbol in symbol_occurrences else 1
 
@@ -218,16 +220,16 @@ if __name__ == "__main__":
     # The number of bits needed to represent the number of UTF-8 bytes depends on the block size. Also the max number
     # of bytes per UTF-8 character is 4. For example, if our blocks consists of 3 characters, that means we need a max
     # of 3 * 4 = 12 characters to represent a block. The number of bits we need to represent a 12 is ceil(log(12)) = 4.
-    bytes_per_utf8_block = math.ceil(math.log(args.block_size * 4, 2))
+    bits_utf8_block = math.ceil(math.log(args.block_size * 4, 2))
 
     if not args.compress and not args.decompress:
         raise ValueError("Either --compress or --decompress needs to be specified")
 
     if args.compress:
         print("Compressing file {}".format(args.file))
-        encode(args.file, args.output, args.block_size, bytes_per_utf8_block)
+        encode(args.file, args.output, args.block_size, bits_utf8_block)
     elif args.decompress:
         print("Decompressing file {}".format(args.file))
-        decode(args.file, args.output, bytes_per_utf8_block)
+        decode(args.file, args.output, bits_utf8_block)
     else:
         print("Neither compressing not decompressing")
