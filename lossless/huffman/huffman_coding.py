@@ -1,6 +1,7 @@
 import math
 import argparse
 import lossless.huffman.paths as paths
+import time
 
 from bitarray import bitarray
 from lossless.huffman.binary_file_reader import BinaryFileReader
@@ -70,30 +71,43 @@ def decode(input_path, output_path, bits_utf8_block):
     decoding_map = {}
 
     with open(input_path, 'rb') as f:
+        start_decoding_content = time.time()
+
         reader = BinaryFileReader(f)
 
         # Keep decoding every Huffman map entry until all entries are covered
         while not is_map_decoding_done:
             is_map_decoding_done = _decode_huffman_map_entry(decoding_map, reader, bits_utf8_block)
 
-        all_encodings = decoding_map.keys()
-
         with open(output_path, 'w') as outf:
-            encoding = bitarray()
+            done_decoding = False
 
-            # Reading remaining bits one at a time. It will match these bits to Huffman codes
-            for bit in reader:
-                encoding.extend(bit)
+            while not done_decoding:
+                read_bits = reader.read_bits(50000)
+                read_valid = False
+                number_read_invalid = 0
 
-                if encoding.to01() in all_encodings:
-                    symbol = decoding_map[encoding.to01()]
+                while not read_valid:
+                    try:
+                        # Can raise ValueError if the last symbol read is incomplete. At that point, it
+                        # reads bit by bit until it completes the symbol
+                        symbols = read_bits.decode(decoding_map)
 
-                    # It stops when it reaches the end-of-file SEPARATOR 4
-                    if symbol == u"\u001C":
-                        break
+                        # It reached end-of-file when it reads SEPARATOR 4
+                        if symbols[-1] == u"\u001C":
+                            symbols = symbols[:-1]
+                            done_decoding = True
 
-                    outf.write(symbol)
-                    encoding.clear()
+                        outf.write(''.join(symbols))
+                        read_valid = True
+                    except ValueError:
+                        if number_read_invalid == 31:
+                            raise ValueError("Could not decode input file")
+
+                        number_read_invalid += 1
+                        read_bits.extend(reader.read_bits(1))
+
+        print("Decoding content time: {} s".format(time.time() - start_decoding_content))
 
 
 # Returns true if we it is done reading the encoding map. This happens when the entry read is unicode SEPARATOR 3
@@ -118,7 +132,7 @@ def _decode_huffman_map_entry(decoding_map, reader, bits_utf8_block):
     print('Decoded map entry {} -> {} with UTF-8 character bits {}'
           .format(encoding_bits.to01(), utf8_symbol, utf8_symbol_binary.to01()))
 
-    decoding_map[encoding_bits.to01()] = utf8_symbol
+    decoding_map[utf8_symbol] = encoding_bits
 
     return False
 
